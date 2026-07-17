@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Traffic AI · Bengaluru</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090e;
+    --surface: rgba(13, 17, 24, 0.75);
+    --surface-solid: #0d1118;
+    --surface-2: #141b25;
+    --border: rgba(43, 56, 78, 0.5);
+    --border-glow: rgba(255, 180, 0, 0.25);
+    --text: #f0f3f6;
+    --text-muted: #8492a6;
+    --accent: #ffb400;
+    --accent-dim: #7a5c10;
+    --accent-glow: rgba(255, 180, 0, 0.4);
+    --state-green: #3ddc84;
+    --state-amber: #ffb400;
+    --state-red: #ff4757;
+    --state-flood: #38bdf8;
+    --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  ::selection { background: var(--accent); color: #111; }
+  
+  /* Webkit custom scrollbars */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* ---------- TOP OPERATIONS HEADER ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-solid);
+    flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 1000;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #ff8800);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #111; font-size: 16px;
+    box-shadow: 0 0 10px var(--border-glow);
+  }
+  .brand-text h1 {
+    font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .brand-text span {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted); letter-spacing: 0.5px;
+  }
+
+  .live-telemetry-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+  }
+  .telemetry-item { display: flex; align-items: center; gap: 6px; }
+  .telemetry-item span.lbl { color: var(--text-muted); }
+  .telemetry-item span.val { color: var(--accent); font-weight: 500; }
+
+  .status-cluster { display: flex; align-items: center; gap: 20px; }
+  .status-item { display: flex; align-items: center; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-muted); }
+  .pulse-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--state-green);
+    box-shadow: 0 0 0 0 rgba(61,220,132,0.6);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(61,220,132,0.55); }
+    70% { box-shadow: 0 0 0 8px rgba(61,220,132,0); }
+    100% { box-shadow: 0 0 0 0 rgba(61,220,132,0); }
+  }
+  .pulse-dot.offline { background: var(--state-amber); animation: pulseAmber 2s infinite; }
+  @keyframes pulseAmber {
+    0% { box-shadow: 0 0 0 0 rgba(255,180,0,0.55); }
+    70% { box-shadow: 0 0 0 8px rgba(255,180,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,180,0,0); }
+  }
+  #clock { color: var(--text); font-weight: 500; }
+
+  /* ---------- city signal strip ---------- */
+  .signal-strip {
+    display: flex; gap: 3px; padding: 0 24px 8px 24px; background: var(--surface-solid); flex-shrink: 0;
+  }
+  .signal-seg {
+    flex: 1; height: 4px; border-radius: 2px; background: var(--state-green); opacity: 0.85;
+    position: relative; transition: opacity .15s ease, transform .15s ease;
+  }
+  .signal-seg.amber { background: var(--state-amber); }
+  .signal-seg.red { background: var(--state-red); }
+  .strip-label {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted);
+    padding: 0 24px 6px 24px; background: var(--surface-solid); letter-spacing: 0.5px;
+    display: flex; justify-content: space-between; border-bottom: 1px solid var(--border);
+  }
+
+  /* ---------- MAIN CONTAINER ---------- */
+  .app-body { display: flex; flex: 1; min-height: 0; }
+
+  /* ---------- SIDEBAR NAVIGATION RAIL ---------- */
+  nav.rail {
+    width: 64px; background: var(--surface-solid); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; flex-shrink: 0;
+  }
+  .rail-btn {
+    width: 48px; height: 48px; border-radius: 10px; background: transparent; border: none;
+    color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    position: relative; transition: all .2s ease;
+  }
+  .rail-btn svg { width: 22px; height: 22px; transition: stroke .2s ease; }
+  .rail-btn:hover { background: var(--surface-2); color: var(--text); }
+  .rail-btn.active { background: rgba(255,180,0,0.12); color: var(--accent); border: 1px solid var(--border-glow); }
+  .rail-btn.active svg { stroke: var(--accent); }
+  
+  /* Tooltip */
+  .rail-btn::after {
+    content: attr(data-tooltip);
+    position: absolute; left: 74px; background: var(--surface-solid);
+    border: 1px solid var(--border); color: var(--text); font-size: 11px;
+    padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity .15s ease;
+    box-shadow: var(--shadow); z-index: 1000;
+  }
+  .rail-btn:hover::after { opacity: 1; }
+
+  /* ---------- SPLIT PANE CONTENT ---------- */
+  main { flex: 1; display: flex; min-width: 0; }
+  
+  /* Left Pane: Interactive Map */
+  .map-pane {
+    width: 58%; height: 100%; position: relative; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+  }
+  #map { flex: 1; z-index: 10; }
+  
+  /* Map Legends / Overlays */
+  .map-overlay-banner {
+    position: absolute; top: 12px; left: 12px; z-index: 500;
+    background: rgba(7, 9, 14, 0.85); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+    box-shadow: var(--shadow); pointer-events: auto;
+  }
+  .map-overlay-banner .coords-title { font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .map-overlay-banner .coords-val { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-muted); }
+  
+  .legend {
+    position: absolute; bottom: 16px; left: 16px; z-index: 500;
+    background: rgba(7, 9, 14, 0.85); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    display: flex; gap: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Right Pane: Glassmorphic Operations Console */
+  .console-pane {
+    width: 42%; height: 100%; background: var(--surface); backdrop-filter: blur(14px);
+    display: flex; flex-direction: column; min-width: 320px; overflow: hidden;
+  }
+  .console-header {
+    padding: 18px 24px 10px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .console-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 600; color: var(--text);
+  }
+  .console-subtitle {
+    font-size: 11.5px; color: var(--text-muted); margin-top: 2px;
+  }
+
+  /* Console Panel Container */
+  .panel-container { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .panel-section { display: none; width: 100%; }
+  .panel-section.active { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ---------- COMPONENT INTERFACES ---------- */
+  
+  /* Telemetry Cards */
+  .console-card {
+    background: rgba(20, 27, 37, 0.6); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .console-card:hover { border-color: rgba(255, 180, 0, 0.35); box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+  .card-header { display: flex; justify-content: space-between; align-items: center; }
+  .card-title { font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; color: var(--text-muted); }
+  .card-value { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 600; color: var(--text); }
+  .card-value.small { font-size: 16px; font-family: 'Inter', sans-serif; }
+  .card-footer { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-muted); }
+
+  /* Forms & Buttons */
+  .console-form-group { display: flex; flex-direction: column; gap: 6px; }
+  .console-label { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; }
+  .console-input-row { display: flex; gap: 10px; }
+  .console-select, .console-input {
+    flex: 1; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 12.5px;
+    transition: border-color 0.15s ease;
+  }
+  .console-select:focus, .console-input:focus { border-color: var(--accent); outline: none; }
+  .console-btn {
+    background: var(--accent); color: #111; font-weight: 600; border: none;
+    padding: 10px 16px; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 13px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .console-btn:hover { background: #ffc433; }
+  .console-btn:active { transform: scale(0.98); }
+  .console-btn:disabled { background: var(--surface-2); color: var(--text-muted); cursor: not-allowed; border: 1px solid var(--border); }
+  
+  .console-btn-secondary {
+    background: transparent; color: var(--text); border: 1px solid var(--border);
+  }
+  .console-btn-secondary:hover { background: var(--surface-2); border-color: var(--text-muted); }
+
+  /* Route Console Logs */
+  .console-log {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-muted);
+    line-height: 1.8; background: var(--surface-solid); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+  }
+  .console-log b { color: var(--state-green); }
+  .console-log .warn { color: var(--state-red); font-weight: 600; }
+  .console-log .info { color: var(--state-flood); }
+  .console-log .seg { padding-left: 12px; color: #a4b3c6; }
+  .console-log .alt-head { margin-top: 10px; color: var(--text); font-weight: 600; text-transform: uppercase; font-size: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+
+  /* Dynamic Alert Banners */
+  .alert-banner {
+    background: rgba(255, 71, 87, 0.12); border: 1px solid rgba(255, 71, 87, 0.3);
+    border-radius: 8px; padding: 10px 14px; display: flex; gap: 10px; align-items: flex-start;
+    color: var(--state-red); font-size: 11.5px; font-family: 'Inter', sans-serif;
+  }
+  .alert-banner.info {
+    background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3);
+    color: var(--state-flood);
+  }
+  .alert-banner svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+  /* Prediction Layout */
+  .pred-chart-wrap {
+    background: var(--surface-solid); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  }
+  .pred-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; }
+  .junction-row {
+    display: flex; justify-content: space-between; align-items: center; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;
+  }
+  .junction-row:hover, .junction-row.selected { border-color: var(--accent); background: rgba(255, 180, 0, 0.05); }
+  .junction-row .name { font-size: 12px; font-weight: 500; color: var(--text); }
+  .junction-row .meta { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+  .chip { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+  .chip.green { background: rgba(61,220,132,0.12); color: var(--state-green); border: 1px solid rgba(61,220,132,0.3); }
+  .chip.amber { background: rgba(255,180,0,0.12); color: var(--state-amber); border: 1px solid rgba(255,180,0,0.3); }
+  .chip.red { background: rgba(255,71,87,0.12); color: var(--state-red); border: 1px solid rgba(255,71,87,0.3); }
+
+  /* Signals Adaptive Layout */
+  .signal-visualizer-card {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface-solid); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px;
+  }
+  .signal-lights-group { display: flex; gap: 12px; }
+  .traffic-light-head {
+    width: 32px; height: 80px; background: #141b25; border: 2px solid #2b384e;
+    border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: space-around; padding: 6px 0;
+  }
+  .light-bulb { width: 18px; height: 18px; border-radius: 50%; background: #232a35; transition: all 0.3s ease; }
+  .light-bulb.red.active { background: var(--state-red); box-shadow: 0 0 10px var(--state-red); }
+  .light-bulb.amber.active { background: var(--state-amber); box-shadow: 0 0 10px var(--state-amber); }
+  .light-bulb.green.active { background: var(--state-green); box-shadow: 0 0 10px var(--state-green); }
+  
+  .signal-data-side { flex: 1; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+  .signal-data-side .sec-title { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; }
+  .signal-data-side .sec-timer { font-family: 'IBM Plex Mono', monospace; font-size: 24px; color: var(--accent); font-weight: bold; }
+  
+  .signal-table { display: flex; flex-direction: column; gap: 8px; }
+  .signal-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .signal-item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .signal-item-top .name { font-weight: 500; font-size: 12px; }
+  .signal-item-top .rec { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--accent); }
+  .bar-track { height: 6px; border-radius: 3px; background: var(--surface-solid); overflow: hidden; display: flex; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); transition: width 0.4s ease; }
+
+  /* CCTV camera feed simulation */
+  .cctv-upload-wrap {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer;
+    transition: border-color 0.2s ease;
+  }
+  .cctv-upload-wrap:hover { border-color: var(--accent); }
+  .cctv-upload-wrap svg { width: 36px; height: 36px; stroke: var(--text-muted); }
+  .cctv-upload-wrap span { font-size: 12px; color: var(--text-muted); }
+
+  #visionImageContainer {
+    position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #000;
+  }
+
+  /* Flood Grid */
+  .flood-grid { display: flex; flex-direction: column; gap: 8px; }
+  .flood-item { display: flex; justify-content: space-between; align-items: center; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .flood-item .fname { font-size: 12.5px; font-weight: 500; }
+  .flood-item .fmeta { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+
+  /* Leaflet Pulsing Marker Animation style */
+  .route-flow-line {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 5px #3ddc84);
+    stroke-dasharray: 15, 120;
+    animation: flowLineAnim 5s linear infinite;
+  }
+  @keyframes flowLineAnim {
+    from { stroke-dashoffset: 135; }
+    to { stroke-dashoffset: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">S</div>
+    <div class="brand-text">
+      <h1>Smart Traffic AI</h1>
+      <span>BENGALURU · COGNITIVE COMMAND CENTER</span>
+    </div>
+  </div>
+  <div class="live-telemetry-banner">
+    <div class="telemetry-item"><span class="lbl">FOCUS:</span> <span class="val" id="monitorFocus">J01 - Silk Board</span></div>
+    <div class="telemetry-item"><span class="lbl">RAIN:</span> <span class="val" id="monitorRain">0.0 mm/hr</span></div>
+    <div class="telemetry-item"><span class="lbl">TEMP:</span> <span class="val" id="monitorTemp">26.0°C</span></div>
+  </div>
+  <div class="status-cluster">
+    <div class="status-item"><span class="pulse-dot connecting" id="statusDot"></span> <span id="statusText">CONNECTING…</span></div>
+    <div class="status-item">NODES: <span style="color:var(--text)" id="nodeCount">—/15</span></div>
+    <div class="status-item" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="signal-strip" id="signalStrip"></div>
+<div class="strip-label">
+  <span>NETWORK NODE MATRIX — GREEN-CORRIDOR CAPABILITY ENGAGED</span>
+  <span id="dataSourceNote">source: connecting…</span>
+</div>
+
+<div class="app-body">
+  <!-- SLEEK COMPACT SIDE NAV RAIL -->
+  <nav class="rail" id="rail">
+    <button class="rail-btn active" data-panel="overview-panel" data-tooltip="Overview & Telemetry">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+    </button>
+    <button class="rail-btn" data-panel="routing-panel" data-tooltip="Corridor Routing">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+    </button>
+    <button class="rail-btn" data-panel="prediction-panel" data-tooltip="AI Traffic Prediction">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+    </button>
+    <button class="rail-btn" data-panel="signals-panel" data-tooltip="Adaptive Signals">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="20" rx="4"/><circle cx="12" cy="7" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="17" r="1.3"/></svg>
+    </button>
+    <button class="rail-btn" data-panel="cctv-panel" data-tooltip="Camera YOLOv8 CCTV">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 00-2 2z"/></svg>
+    </button>
+    <button class="rail-btn" data-panel="flood-panel" data-tooltip="Flood Waterlogging Risks">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 15a1 1 0 011-1h16a1 1 0 011 1v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3zM12 2v10M9 9l3 3 3-3"/></svg>
+    </button>
+    <button class="rail-btn" data-panel="metrics-panel" data-tooltip="Model Performance Metrics">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"/></svg>
+    </button>
+  </nav>
+
+  <main>
+    <!-- LEFT PANEL: FULL INTERACTIVE MAP (60%) -->
+    <div class="map-pane">
+      <div id="map"></div>
+      <div class="map-overlay-banner">
+        <span class="coords-title">ACTIVE LOCATION PIN</span>
+        <span class="coords-val" id="mapPinLabel">Click anywhere on map to focus operations</span>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:var(--state-green)"></span>Free flow</div>
+        <div class="legend-item"><span class="legend-dot" style="background:var(--state-amber)"></span>Moderate</div>
+        <div class="legend-item"><span class="legend-dot" style="background:var(--state-red)"></span>Congested</div>
+        <div class="legend-item"><span class="legend-dot" style="background:var(--state-flood); width:6px; height:6px; border:2px solid var(--state-red);"></span>Flood Risk Zone</div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: OPERATIONS CONSOLE (40%) -->
+    <div class="console-pane">
+      <div class="console-header">
+        <div class="console-title" id="consoleTitle">Operations Overview</div>
+        <div class="console-subtitle" id="consoleSubtitle">Real-time statistics & dynamic place lookup</div>
+      </div>
+
+      <div class="panel-container">
+        
+        <!-- PANEL 1: OVERVIEW & GENERAL TELEMETRY -->
+        <section class="panel-section active" id="overview-panel">
+          <div class="console-card">
+            <span class="card-title">Selected Area Telemetry</span>
+            <span class="card-value small" id="activePlaceName">Silk Board Junction</span>
+            <div style="display:flex; justify-content:space-between; margin-top:8px;">
+              <span style="font-size:12px; color:var(--text-muted);">Current Congestion:</span>
+              <span id="activePlaceCongestion" class="chip red" style="font-size:11px; padding:2px 8px;">92% Congestion</span>
+            </div>
+          </div>
+          
+          <div class="console-card">
+            <span class="card-title">City-Wide Speed Index</span>
+            <span class="card-value" id="avgSpeedVal">15.4 km/h</span>
+            <span class="card-footer">Calculated from 15 telemetry control points</span>
+          </div>
+
+          <div class="console-card">
+            <span class="card-title">Active Bottlenecks</span>
+            <span class="card-value" id="bottleneckCount">5 Junctions</span>
+            <span class="card-footer" style="color:var(--state-red)">Congestion exceeding 70% limit</span>
+          </div>
+          
+          <div class="alert-banner info" id="weatherAlertBanner">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <div>
+              <div style="font-weight:600;">Open-Meteo Weather Status</div>
+              <div style="font-size:11px; margin-top:2px;" id="weatherAlertText">No active rainfall reported. Drainage operating normally.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PANEL 2: CORRIDOR ROUTING -->
+        <section class="panel-section" id="routing-panel">
+          <div class="console-form-group">
+            <label class="console-label">Origin Location</label>
+            <div class="console-input-row">
+              <input type="text" id="routeOriginInput" class="console-input" placeholder="Select junction or click map..." />
+              <button class="console-btn console-btn-secondary" id="setOriginBtn" style="font-size:11px; padding:6px 10px;">Use Pin</button>
+            </div>
+          </div>
+          
+          <div class="console-form-group">
+            <label class="console-label">Destination Location</label>
+            <div class="console-input-row">
+              <input type="text" id="routeDestInput" class="console-input" placeholder="Select junction or click map..." />
+              <button class="console-btn console-btn-secondary" id="setDestBtn" style="font-size:11px; padding:6px 10px;">Use Pin</button>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div class="console-form-group" style="flex:1;">
+              <label class="console-label">Alternatives</label>
+              <select id="routeAltsSelect" class="console-select" style="padding:6px 10px;">
+                <option value="1">1 Path</option>
+                <option value="2">2 Paths</option>
+                <option value="3" selected>3 Paths</option>
+              </select>
+            </div>
+            <button class="console-btn" id="generateRouteBtn" style="height:36px; align-self:flex-end;">Generate Corridor</button>
+          </div>
+
+          <div class="alert-banner" id="floodRerouteAlert" style="display:none;">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <div>
+              <div style="font-weight:600;">Flood Bypass Active</div>
+              <div style="font-size:11px; margin-top:2px;" id="floodRerouteText">Primary route altered to bypass flooded roads.</div>
+            </div>
+          </div>
+
+          <div class="console-log" id="routingLog">Awaiting route parameter selection…</div>
+        </section>
+
+        <!-- PANEL 3: AI TRAFFIC FORECAST -->
+        <section class="panel-section" id="prediction-panel">
+          <div class="console-card">
+            <span class="card-title">Focus Target</span>
+            <span class="card-value small" id="predTargetLabel">Silk Board Junction</span>
+            <span class="card-footer">GAT + LSTM sequence predictions</span>
+          </div>
+
+          <div class="pred-chart-wrap">
+            <canvas id="predChart" height="240"></canvas>
+          </div>
+
+          <div class="console-label">Intersections & Places</div>
+          <div class="pred-list" id="predJunctionsList"></div>
+        </section>
+
+        <!-- PANEL 4: ADAPTIVE SIGNALS -->
+        <section class="panel-section" id="signals-panel">
+          <div class="console-card">
+            <span class="card-title">Optimizing Signals Split</span>
+            <span class="card-value small" id="adaptiveSignalTarget">Silk Board Junction</span>
+          </div>
+
+          <div class="signal-visualizer-card">
+            <div class="signal-lights-group">
+              <div class="traffic-light-head">
+                <div class="light-bulb red active" id="signalLightRed"></div>
+                <div class="light-bulb amber" id="signalLightAmber"></div>
+                <div class="light-bulb green" id="signalLightGreen"></div>
+              </div>
+            </div>
+            <div class="signal-data-side">
+              <div class="sec-title" id="activePhaseNameText">Phase 1: Major Corridor</div>
+              <div class="sec-timer" id="activePhaseTime">24s Remaining</div>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-muted)" id="websterCycleText">Webster Optimum Cycle: --s</span>
+            </div>
+          </div>
+
+          <div class="console-btn console-btn-secondary" id="triggerOptimizeBtn" style="font-size:12px; height:34px;">Recalculate splits (Webster Formula)</div>
+
+          <div class="console-label">Optimized Green splits</div>
+          <div class="signal-table" id="signalSplitsTable"></div>
+        </section>
+
+        <!-- PANEL 5: YOLOv8 CCTV VISION -->
+        <section class="panel-section" id="cctv-panel">
+          <div class="console-form-group">
+            <label class="console-label">Target camera</label>
+            <select id="cctvJunctionSelect" class="console-select"></select>
+          </div>
+
+          <div class="cctv-upload-wrap" onclick="document.getElementById('cctvFileInput').click()">
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+            <span>Click to upload camera screenshot</span>
+            <input type="file" id="cctvFileInput" accept="image/*" style="display:none;" />
+          </div>
+
+          <div class="console-btn" id="runCctvDetectBtn">Run YOLOv8 Detections</div>
+          
+          <div class="console-log" id="cctvLog">Upload a frame to perform live YOLOv8 vehicle detection.</div>
+
+          <div id="visionImageContainer"></div>
+        </section>
+
+        <!-- PANEL 6: FLOOD WATERLOGGING RISKS -->
+        <section class="panel-section" id="flood-panel">
+          <div class="console-card">
+            <span class="card-title">Live Monsoon Vulnerability</span>
+            <span class="card-value small" id="floodMainTargetLabel">Silk Board Junction</span>
+            <span class="card-footer" id="floodElevationFooter">Elevation: 920m | Distance to drain: --km</span>
+          </div>
+          
+          <div class="console-label">BBMP Flood Warning Zones (Live Precipitation Risk)</div>
+          <div class="flood-grid" id="floodRisksGrid"></div>
+        </section>
+
+        <!-- PANEL 7: MODEL PERFORMANCE METRICS -->
+        <section class="panel-section" id="metrics-panel">
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
+            <div class="console-card" style="padding:10px; align-items:center; text-align:center;">
+              <span class="card-title" style="font-size:10px;">GAT-LSTM Acc</span>
+              <span class="card-value" style="font-size:20px; color:var(--accent);" id="metricsGatAccuracy">--%</span>
+              <span class="card-footer" style="font-size:9px;" id="metricsGatMae">MAE: --%</span>
+            </div>
+            <div class="console-card" style="padding:10px; align-items:center; text-align:center;">
+              <span class="card-title" style="font-size:10px;">YOLOv8 mAP</span>
+              <span class="card-value" style="font-size:20px; color:var(--state-green);" id="metricsYoloMap">89.8%</span>
+              <span class="card-footer" style="font-size:9px;">Prec: 88.5%</span>
+            </div>
+            <div class="console-card" style="padding:10px; align-items:center; text-align:center;">
+              <span class="card-title" style="font-size:10px;">Flood Sens</span>
+              <span class="card-value" style="font-size:20px; color:var(--state-flood);" id="metricsFloodF1">93.3%</span>
+              <span class="card-footer" style="font-size:9px;">Acc: 91.2%</span>
+            </div>
+          </div>
+
+          <div class="console-card">
+            <span class="card-title">Dynamic Validation Profile</span>
+            <div style="display:flex; justify-content:space-between; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:6px;">
+              <span>Forecast Precision (Error &le; 8%):</span>
+              <span style="font-weight:600; color:var(--accent);" id="metricsGatPrecision">--%</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:4px;">
+              <span>Congestion Recall (Spikes &ge; 70%):</span>
+              <span style="font-weight:600; color:var(--accent);" id="metricsGatRecall">--%</span>
+            </div>
+          </div>
+
+          <div class="pred-chart-wrap">
+            <span class="console-label" style="display:block; margin-bottom:8px; text-transform:uppercase; font-size:9.5px;">Training Convergence Curves</span>
+            <div style="height:200px; position:relative;"><canvas id="metricsLossChart"></canvas></div>
+          </div>
+
+          <div class="console-label">Live Evaluation Log (Matured Forecasts)</div>
+          <div class="console-log" id="metricsLog" style="max-height:180px; overflow-y:auto; padding:8px 12px; font-size:10.5px;">
+            Awaiting dynamic validation samples...
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const BACKEND_URL = "http://localhost:8000";
+const VISION_URL = "http://localhost:8001";
+const FETCH_TIMEOUT = 2500;
+
+let junctions = [];
+let backendOnline = false;
+let activeCoords = null;
+let activePlaceName = "Silk Board Junction";
+let activeJunctionId = "J01";
+
+// Route selection tracking
+let routeOrigin = "J01";
+let routeDestination = "J09";
+
+// Leaflet map configuration
+const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([12.9716, 77.6260], 12);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+let mapMarkers = [];
+let floodZoneOverlays = [];
+let routeLayers = [];
+let userPinMarker = null;
+let predChart = null;
+let lossChart = null;
+
+// Webster timer animation state
+let activeSignalInterval = null;
+let currentPhaseIndex = 0;
+let phaseTimeRemaining = 20;
+
+// Historic warning zones representation on the map
+const FLOOD_ZONES_COORDS = [
+  { name: "Silk Board Junction", lat: 12.9172, lng: 77.6228 },
+  { name: "Bellandur ORR Corridor", lat: 12.9257, lng: 77.6774 },
+  { name: "K.R. Puram Underpass", lat: 13.0027, lng: 77.6958 },
+  { name: "Tin Factory Area", lat: 13.0068, lng: 77.6608 },
+  { name: "Koramangala 80ft Road", lat: 12.9376, lng: 77.6244 },
+];
+
+const stateHex = { green: "#3DDC84", amber: "#FFB400", red: "#FF4757" };
+
+/* ---------------- INITIALIZATION ---------------- */
+async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (e) {
+    clearTimeout(id);
+    throw e;
+  }
+}
+
+// Clock updates
+function tickClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-IN', { hour12: false });
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* ---------------- TABS SWITCHING RAIL ---------------- */
+document.querySelectorAll('.rail-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.rail-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel-section').forEach(p => p.classList.remove('active'));
+    
+    btn.classList.add('active');
+    const panelId = btn.dataset.panel;
+    const targetPanel = document.getElementById(panelId);
+    targetPanel.classList.add('active');
+    
+    // Set headers
+    const titleMap = {
+      'overview-panel': { t: "Operations Overview", st: "Real-time statistics & dynamic place lookup" },
+      'routing-panel': { t: "Emergency Green Corridor", st: "OSRM live routing with dynamic flood-avoidance" },
+      'prediction-panel': { t: "AI Congestion Forecast", st: "GAT + LSTM sequence prediction per coordinate" },
+      'signals-panel': { t: "Adaptive Signals Control", st: "Webster signal timing optimization based on live counts" },
+      'cctv-panel': { t: "CCTV Bounding Analysis", st: "Live YOLOv8 inference counts on camera frames" },
+      'flood-panel': { t: "Waterlogging Vulnerabilities", st: "Open-Meteo precipitation models & BBMP zones" },
+      'metrics-panel': { t: "Model Performance Metrics", st: "Live validation analytics, precision profiles, and loss decay curves" }
+    };
+    document.getElementById('consoleTitle').textContent = titleMap[panelId].t;
+    document.getElementById('consoleSubtitle').textContent = titleMap[panelId].st;
+
+    // Refresh context when switching
+    refreshPanelContext(panelId);
+  });
+});
+
+function refreshPanelContext(panelId) {
+  if (panelId === 'prediction-panel') {
+    requestForecast();
+  } else if (panelId === 'signals-panel') {
+    requestAdaptiveSignals();
+  } else if (panelId === 'flood-panel') {
+    requestFloodRiskData();
+  } else if (panelId === 'metrics-panel') {
+    requestModelMetrics();
+  }
+}
+
+/* ---------------- LEAFLET MAP HANDLERS ---------------- */
+function renderJunctionMarkers(list) {
+  mapMarkers.forEach(m => map.removeLayer(m));
+  mapMarkers = [];
+
+  list.forEach(j => {
+    const isTarget = j.id === activeJunctionId;
+    const size = isTarget ? 11 : 8;
+    const marker = L.circleMarker([j.lat, j.lng], {
+      radius: size,
+      fillColor: stateHex[j.state],
+      color: isTarget ? "#ffffff" : stateHex[j.state],
+      weight: isTarget ? 3 : 1.5,
+      fillOpacity: 0.65,
+    }).addTo(map);
+
+    // Pulsing halo for select markers
+    const halo = L.circleMarker([j.lat, j.lng], {
+      radius: size,
+      color: stateHex[j.state],
+      weight: 1,
+      fillOpacity: 0,
+      opacity: 0.55
+    }).addTo(map);
+
+    let r = size, growing = true;
+    const intervalId = setInterval(() => {
+      r += growing ? 0.35 : -0.35;
+      if (r > size + 7) growing = false;
+      if (r < size) growing = true;
+      try {
+        halo.setRadius(r);
+        halo.setStyle({ opacity: (size + 7 - r) / 7 * 0.5 });
+      } catch (e) {
+        clearInterval(intervalId);
+      }
+    }, 65);
+
+    marker.bindPopup(`
+      <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:12.5px; margin-bottom:4px; color:#fff;">${j.name}</div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8492a6; line-height:1.6;">
+        ID: ${j.id}<br>
+        CONGESTION: ${Math.round(j.congestion * 100)}%<br>
+        SPEED: ${j.speed} km/h<br>
+        STATUS: ${j.state.toUpperCase()}
+      </div>
+    `);
+
+    marker.on('click', () => {
+      selectJunction(j.id);
+    });
+
+    mapMarkers.push(marker, halo);
+  });
+}
+
+function selectJunction(jid) {
+  activeJunctionId = jid;
+  const j = junctions.find(x => x.id === jid);
+  if (!j) return;
+  
+  activePlaceName = j.name;
+  activeCoords = { lat: j.lat, lng: j.lng };
+  
+  document.getElementById('monitorFocus').textContent = `${jid} - ${j.name}`;
+  document.getElementById('activePlaceName').textContent = j.name;
+  
+  const cEl = document.getElementById('activePlaceCongestion');
+  cEl.className = `chip ${j.state}`;
+  cEl.textContent = `${Math.round(j.congestion * 100)}% Congestion`;
+  
+  document.getElementById('mapPinLabel').textContent = `${j.name} (${j.lat.toFixed(4)}, ${j.lng.toFixed(4)})`;
+
+  // Draw focus circle or move pin
+  if (userPinMarker) map.removeLayer(userPinMarker);
+  userPinMarker = L.circleMarker([j.lat, j.lng], {
+    radius: 14, color: '#38bdf8', weight: 2, fillOpacity: 0.1, dashArray: '4, 4'
+  }).addTo(map);
+
+  renderJunctionMarkers(junctions);
+
+  // Refresh whatever panel is active
+  const activeBtn = document.querySelector('.rail-btn.active');
+  if (activeBtn) refreshPanelContext(activeBtn.dataset.panel);
+}
+
+// Map clicks allow targeting any coordinate in Bangalore
+map.on('click', async (e) => {
+  const lat = e.latlng.lat;
+  const lng = e.latlng.lng;
+  
+  activeJunctionId = "DYNAMIC";
+  activeCoords = { lat, lng };
+
+  // Set pulsing blue user pin
+  if (userPinMarker) map.removeLayer(userPinMarker);
+  userPinMarker = L.circleMarker([lat, lng], {
+    radius: 10, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.4, weight: 2
+  }).addTo(map);
+
+  document.getElementById('mapPinLabel').textContent = `Resolving coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}...`;
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/places/lookup?lat=${lat}&lng=${lng}`);
+    const data = await res.json();
+    
+    activePlaceName = data.name;
+    document.getElementById('mapPinLabel').textContent = `${data.name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    document.getElementById('activePlaceName').textContent = data.name;
+    document.getElementById('monitorFocus').textContent = data.name;
+    
+    // Resolve dynamic congestion
+    const riskRes = await fetch(`${BACKEND_URL}/api/flood/risk?lat=${lat}&lng=${lng}`);
+    const riskData = await riskRes.json();
+    
+    const activePlaceCongestion = document.getElementById('activePlaceCongestion');
+    // Approximate dynamic congestion based on risk/nearby density
+    const dynamicCong = Math.round(35 + riskData.risk_probability * 50);
+    const chipState = dynamicCong > 70 ? 'red' : dynamicCong > 45 ? 'amber' : 'green';
+    
+    activePlaceCongestion.className = `chip ${chipState}`;
+    activePlaceCongestion.textContent = `${dynamicCong}% Traffic`;
+    
+    // Set headers telemetry indicators
+    document.getElementById('monitorRain').textContent = `${riskData.precipitation_mm_hr} mm/hr`;
+    document.getElementById('monitorTemp').textContent = `${riskData.temperature_c}°C`;
+    
+  } catch (err) {
+    document.getElementById('mapPinLabel').textContent = `Target pin: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+
+  // Refresh whatever panel is active
+  const activeBtn = document.querySelector('.rail-btn.active');
+  if (activeBtn) refreshPanelContext(activeBtn.dataset.panel);
+});
+
+function drawFloodOverlays() {
+  floodZoneOverlays.forEach(o => map.removeLayer(o));
+  floodZoneOverlays = [];
+
+  FLOOD_ZONES_COORDS.forEach(z => {
+    // Large overlay warning zones
+    const zoneCircle = L.circle([z.lat, z.lng], {
+      radius: 650,
+      color: '#ff4757',
+      fillColor: '#ff4757',
+      fillOpacity: 0.12,
+      weight: 1.5,
+      dashArray: '6, 6'
+    }).addTo(map);
+    
+    zoneCircle.bindPopup(`<b>Historic Flood hazard Zone</b><br>${z.name}<br>Severe pooling during high rainfall.`);
+    floodZoneOverlays.push(zoneCircle);
+  });
+}
+
+/* ---------------- SYSTEM BOOT ---------------- */
+async function boot() {
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const sourceNote = document.getElementById('dataSourceNote');
+
+  try {
+    const health = await fetchWithTimeout(`${BACKEND_URL}/health`);
+    if (!health.ok) throw new Error('unhealthy');
+
+    const liveRes = await fetchWithTimeout(`${BACKEND_URL}/api/junctions/live`);
+    const liveRaw = await liveRes.json();
+    junctions = liveRaw.map(j => ({
+      ...j,
+      state: j.congestion > 0.7 ? 'red' : j.congestion > 0.45 ? 'amber' : 'green',
+      volume: Math.round(2000 + j.congestion * 3500)
+    }));
+
+    const statsRes = await fetchWithTimeout(`${BACKEND_URL}/api/stats/summary`);
+    const statsData = await statsRes.json();
+
+    backendOnline = true;
+    statusDot.className = 'pulse-dot';
+    statusText.textContent = 'SYSTEM ONLINE';
+    sourceNote.textContent = 'source: live operations engine (' + BACKEND_URL + ')';
+    
+    document.getElementById('avgSpeedVal').textContent = `${statsData.avg_speed_kmph} km/h`;
+    document.getElementById('bottleneckCount').textContent = `${statsData.high_congestion_count} Junctions`;
+    document.getElementById('nodeCount').textContent = `${statsData.junctions_monitored}/15`;
+
+    // Populate drop downs
+    populateDropdowns(junctions);
+
+  } catch (e) {
+    // Demo offline values fallback
+    backendOnline = false;
+    statusDot.className = 'pulse-dot offline';
+    statusText.textContent = 'DEMO MODE — BACKEND OFFLINE';
+    sourceNote.textContent = 'source: demo mode - run python main.py for operations engine';
+    
+    // Set static junctions
+    junctions = [
+      { id: "J01", name: "Silk Board Junction", lat: 12.9172, lng: 77.6228, speed: 9, congestion: 0.92, state: "red" },
+      { id: "J02", name: "Marathahalli Bridge", lat: 12.9569, lng: 77.7011, speed: 14, congestion: 0.71, state: "red" },
+      { id: "J03", name: "K.R. Puram", lat: 13.0027, lng: 77.6958, speed: 11, congestion: 0.85, state: "red" },
+      { id: "J04", name: "Hebbal Flyover", lat: 13.0358, lng: 77.5970, speed: 22, congestion: 0.48, state: "amber" },
+      { id: "J05", name: "Tin Factory", lat: 13.0068, lng: 77.6608, speed: 13, congestion: 0.68, state: "amber" },
+      { id: "J06", name: "Trinity Circle", lat: 12.9718, lng: 77.6197, speed: 18, congestion: 0.42, state: "green" },
+      { id: "J07", name: "Domlur Junction", lat: 12.9611, lng: 77.6387, speed: 20, congestion: 0.38, state: "green" },
+      { id: "J08", name: "Iblur, Sarjapur Rd", lat: 12.9166, lng: 77.6631, speed: 10, congestion: 0.81, state: "red" },
+      { id: "J09", name: "Yeshwanthpur", lat: 13.0284, lng: 77.5540, speed: 24, congestion: 0.33, state: "green" },
+      { id: "J10", name: "Electronic City Toll", lat: 12.8452, lng: 77.6602, speed: 16, congestion: 0.55, state: "amber" },
+      { id: "J11", name: "MG Road", lat: 12.9756, lng: 77.6068, speed: 19, congestion: 0.40, state: "green" },
+      { id: "J12", name: "Bellandur", lat: 12.9257, lng: 77.6774, speed: 12, congestion: 0.74, state: "red" },
+      { id: "J13", name: "Whitefield", lat: 12.9698, lng: 77.7500, speed: 15, congestion: 0.60, state: "amber" },
+      { id: "J14", name: "Banashankari", lat: 12.9255, lng: 77.5468, speed: 23, congestion: 0.30, state: "green" },
+      { id: "J15", name: "Jayanagar 4th Block", lat: 12.9299, lng: 77.5825, speed: 21, congestion: 0.35, state: "green" }
+    ];
+    populateDropdowns(junctions);
+  }
+
+  // Draw markers & overlays
+  renderJunctionMarkers(junctions);
+  drawFloodOverlays();
+  
+  // Set default view active
+  selectJunction("J01");
+}
+
+function populateDropdowns(list) {
+  const cctvSel = document.getElementById('cctvJunctionSelect');
+  cctvSel.innerHTML = '';
+  list.forEach(j => {
+    cctvSel.innerHTML += `<option value="${j.id}">${j.name}</option>`;
+  });
+}
+
+/* ---------------- PANEL 2: EMERGENCY ROUTING ---------------- */
+// Use pin actions to set origin/destination coords
+document.getElementById('setOriginBtn').addEventListener('click', () => {
+  if (!activeCoords) {
+    alert("Click on the map first to drop a pin coordinate!");
+    return;
+  }
+  const text = activeJunctionId !== "DYNAMIC" ? activeJunctionId : `${activeCoords.lat.toFixed(5)},${activeCoords.lng.toFixed(5)}`;
+  document.getElementById('routeOriginInput').value = text;
+  routeOrigin = text;
+});
+
+document.getElementById('setDestBtn').addEventListener('click', () => {
+  if (!activeCoords) {
+    alert("Click on the map first to drop a pin coordinate!");
+    return;
+  }
+  const text = activeJunctionId !== "DYNAMIC" ? activeJunctionId : `${activeCoords.lat.toFixed(5)},${activeCoords.lng.toFixed(5)}`;
+  document.getElementById('routeDestInput').value = text;
+  routeDestination = text;
+});
+
+document.getElementById('generateRouteBtn').addEventListener('click', async () => {
+  const origin = document.getElementById('routeOriginInput').value;
+  const destination = document.getElementById('routeDestInput').value;
+  const alts = parseInt(document.getElementById('routeAltsSelect').value);
+  const logEl = document.getElementById('routingLog');
+  const floodAlert = document.getElementById('floodRerouteAlert');
+
+  if (!origin || !destination) {
+    logEl.innerHTML = `<span class="warn">Please specify both an Origin and Destination location!</span>`;
+    return;
+  }
+
+  logEl.innerHTML = `Requesting optimized corridor geometry...`;
+  floodAlert.style.display = 'none';
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/emergency/route`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin, destination, alternatives: alts })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      logEl.innerHTML = `<span class="warn">Routing optimization failed: ${err.detail}</span>`;
+      return;
+    }
+
+    const data = await res.json();
+    const primary = data.primary;
+    
+    // Draw neon geometries on Leaflet map
+    const altGeoms = data.alternatives ? data.alternatives.map(a => a.geometry) : [];
+    drawRouteOnMap(primary.geometry, altGeoms);
+
+    // Format logs
+    let routeSegmentsHtml = primary.segments.map(s => {
+      return `<div class="seg">${s.road} (${s.distance_km} km)</div>`;
+    }).join('');
+
+    let html = `<b>CORRIDOR LOCKED</b>: ${data.origin} → ${data.destination}<br>
+      Engine: <b>${data.routing_engine}</b><br>
+      Distance: <b>${primary.distance_km} km</b> &nbsp;|&nbsp; ETA: <b>${primary.eta_minutes} mins</b><br>
+      Corridor Status: <b style="color:var(--state-green)">SIGNAL PRE-CLEARANCE ACTIVE</b><br>
+      ${routeSegmentsHtml}`;
+
+    if (data.flood_avoidance_active) {
+      floodAlert.style.display = 'flex';
+      document.getElementById('floodRerouteText').textContent = data.flood_bypass_message;
+      html += `<br><span class="warn">⚠ ${data.flood_bypass_message}</span>`;
+    }
+
+    if (data.alternatives && data.alternatives.length > 0) {
+      html += `<div class="alt-head">Alternative Paths Evaluated:</div>`;
+      data.alternatives.forEach((a, i) => {
+        html += `<div class="seg">${i + 2}. Distance: ${a.distance_km} km | ETA: ${a.eta_minutes} mins (Flood Risk: ${Math.round(a.max_flood_risk * 100)}% - ${a.hazard_zone})</div>`;
+      });
+    }
+
+    logEl.innerHTML = html;
+
+  } catch (err) {
+    logEl.innerHTML = `<span class="warn">⚠ Backend service unreachable. Fallback engines engaged. Please ensure python main.py is active.</span>`;
+  }
+});
+
+function drawRouteOnMap(primaryGeom, alternativeGeoms) {
+  routeLayers.forEach(l => map.removeLayer(l));
+  routeLayers = [];
+
+  // Draw alternative routes in translucent amber dashed lines
+  alternativeGeoms.forEach(g => {
+    const layer = L.geoJSON(g, {
+      style: { color: '#ffb400', weight: 4, opacity: 0.35, dashArray: '5, 10' }
+    }).addTo(map);
+    routeLayers.push(layer);
+  });
+
+  // Draw primary path base glow
+  const baseGlow = L.geoJSON(primaryGeom, {
+    style: { color: '#3ddc84', weight: 9, opacity: 0.25, lineCap: 'round', lineJoin: 'round' }
+  }).addTo(map);
+  routeLayers.push(baseGlow);
+
+  // Draw primary path flow tracker line
+  const flowTracker = L.geoJSON(primaryGeom, {
+    style: { color: '#3ddc84', weight: 4.5, opacity: 0.95, className: 'route-flow-line' }
+  }).addTo(map);
+  routeLayers.push(flowTracker);
+
+  // Focus bounds to route
+  const bounds = flowTracker.getBounds();
+  map.fitBounds(bounds, { padding: [40, 40] });
+}
+
+/* ---------------- PANEL 3: AI TRAFFIC FORECAST ---------------- */
+async function requestForecast() {
+  document.getElementById('predTargetLabel').textContent = activePlaceName;
+  const listEl = document.getElementById('predJunctionsList');
+  listEl.innerHTML = 'Computing GAT+LSTM message propagation...';
+
+  try {
+    const payload = activeJunctionId !== "DYNAMIC" 
+      ? { lat: activeCoords.lat, lng: activeCoords.lng, junction_id: activeJunctionId }
+      : { lat: activeCoords.lat, lng: activeCoords.lng };
+
+    const res = await fetch(`${BACKEND_URL}/api/predict/traffic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error('predict failed');
+    const data = await res.json();
+    
+    // Draw prediction chart
+    const labels = data.forecast_series.map(s => s.time_offset);
+    const chartData = data.forecast_series.map(s => s.congestion_percent);
+    drawPredictionPlot(labels, chartData);
+
+    // Render list
+    listEl.innerHTML = '';
+    junctions.forEach(j => {
+      const isFocus = j.name === activePlaceName;
+      const row = document.createElement('div');
+      row.className = `junction-row ${isFocus ? 'selected' : ''}`;
+      row.innerHTML = `
+        <div>
+          <div class="name">${j.name}</div>
+          <div class="meta">${j.id} · baseline ${Math.round(j.congestion*100)}%</div>
+        </div>
+        <span class="chip ${j.state}">${Math.round(j.congestion*100)}%</span>
+      `;
+      row.addEventListener('click', () => {
+        selectJunction(j.id);
+      });
+      listEl.appendChild(row);
+    });
+
+  } catch (err) {
+    listEl.innerHTML = `<span style="color:var(--state-amber)">Forecast API unavailable. Ensure python main.py backend is active.</span>`;
+  }
+}
+
+function drawPredictionPlot(labels, dataPoints) {
+  if (predChart) predChart.destroy();
+  const ctx = document.getElementById('predChart').getContext('2d');
+  
+  predChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: `${activePlaceName} Forecast (%)`,
+        data: dataPoints,
+        borderColor: '#ffb400',
+        backgroundColor: 'rgba(255, 180, 0, 0.08)',
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointBackgroundColor: '#ffb400',
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#8492a6', font: { family: 'IBM Plex Mono', size: 10.5 } } }
+      },
+      scales: {
+        x: { ticks: { color: '#8492a6', font: { family: 'IBM Plex Mono', size: 9.5 } }, grid: { color: 'rgba(43, 56, 78, 0.25)' } },
+        y: { ticks: { color: '#8492a6', font: { family: 'IBM Plex Mono', size: 9.5 } }, grid: { color: 'rgba(43, 56, 78, 0.25)' }, min: 0, max: 100 }
+      }
+    }
+  });
+}
+
+/* ---------------- PANEL 4: ADAPTIVE SIGNALS ---------------- */
+let lastYoloCount = null;
+
+async function requestAdaptiveSignals() {
+  document.getElementById('adaptiveSignalTarget').textContent = activePlaceName;
+  const listEl = document.getElementById('signalSplitsTable');
+  listEl.innerHTML = 'Computing Webster phase metrics...';
+
+  try {
+    const jParam = activeJunctionId !== "DYNAMIC" 
+      ? activeJunctionId 
+      : `${activeCoords.lat.toFixed(4)},${activeCoords.lng.toFixed(4)}`;
+      
+    let url = `${BACKEND_URL}/api/signals/adaptive?junction_id=${jParam}`;
+    if (lastYoloCount !== null) {
+      url += `&yolo_count=${lastYoloCount}`;
+    }
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    document.getElementById('websterCycleText').textContent = `Webster Optimum Cycle: ${data.optimum_cycle_time_sec}s`;
+    
+    // Format splits
+    listEl.innerHTML = '';
+    data.phases.forEach(p => {
+      const percentage = Math.round(p.green_time_sec / data.optimum_cycle_time_sec * 100);
+      const row = document.createElement('div');
+      row.className = 'signal-item';
+      row.innerHTML = `
+        <div class="signal-item-top">
+          <span class="name">${p.name}</span>
+          <span class="rec">Flow: ${p.flow_rate_veh_hr} veh/hr | Green: ${p.green_time_sec}s (${percentage}%)</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${percentage}%"></div></div>
+      `;
+      listEl.appendChild(row);
+    });
+
+    // Start animated signal transitions
+    animateTrafficSignals(data);
+
+  } catch (err) {
+    listEl.innerHTML = `<span style="color:var(--state-amber)">Signal optimization service unreachable. Ensure python main.py is active.</span>`;
+  }
+}
+
+document.getElementById('triggerOptimizeBtn').addEventListener('click', () => {
+  requestAdaptiveSignals();
+});
+
+function animateTrafficSignals(signalData) {
+  if (activeSignalInterval) clearInterval(activeSignalInterval);
+  
+  const phases = signalData.phases;
+  currentPhaseIndex = 0;
+  phaseTimeRemaining = phases[0].green_time_sec;
+  
+  const bulbRed = document.getElementById('signalLightRed');
+  const bulbAmber = document.getElementById('signalLightAmber');
+  const bulbGreen = document.getElementById('signalLightGreen');
+  const phaseLabel = document.getElementById('activePhaseNameText');
+  const timerLabel = document.getElementById('activePhaseTime');
+
+  function updateVisuals() {
+    bulbRed.classList.remove('active');
+    bulbAmber.classList.remove('active');
+    bulbGreen.classList.remove('active');
+    
+    phaseLabel.textContent = phases[currentPhaseIndex].name;
+    
+    if (phaseTimeRemaining > 4) {
+      bulbGreen.classList.add('active');
+      timerLabel.textContent = `${phaseTimeRemaining}s Green`;
+    } else if (phaseTimeRemaining > 0) {
+      bulbAmber.classList.add('active');
+      timerLabel.textContent = `${phaseTimeRemaining}s Amber`;
+    } else {
+      bulbRed.classList.add('active');
+      timerLabel.textContent = `0s Red`;
+    }
+  }
+
+  updateVisuals();
+  
+  activeSignalInterval = setInterval(() => {
+    phaseTimeRemaining--;
+    if (phaseTimeRemaining < 0) {
+      currentPhaseIndex = (currentPhaseIndex + 1) % phases.length;
+      phaseTimeRemaining = phases[currentPhaseIndex].green_time_sec;
+    }
+    updateVisuals();
+  }, 1000);
+}
+
+/* ---------------- PANEL 5: YOLOv8 CCTV VISION ---------------- */
+let cctvFileObject = null;
+
+document.getElementById('cctvFileInput').addEventListener('change', (e) => {
+  if (e.target.files.length > 0) {
+    cctvFileObject = e.target.files[0];
+    document.querySelector('.cctv-upload-wrap span').textContent = `Loaded: ${cctvFileObject.name}`;
+  }
+});
+
+document.getElementById('runCctvDetectBtn').addEventListener('click', async () => {
+  const logEl = document.getElementById('cctvLog');
+  const targetCam = document.getElementById('cctvJunctionSelect').value;
+
+  if (!cctvFileObject) {
+    logEl.innerHTML = `<span class="warn">Please choose an image file first.</span>`;
+    return;
+  }
+
+  logEl.innerHTML = `Uploading to YOLOv8 inference service (port 8001)...`;
+  const container = document.getElementById('visionImageContainer');
+  container.innerHTML = '';
+
+  const formData = new FormData();
+  formData.append('file', cctvFileObject);
+
+  try {
+    const res = await fetch(`${VISION_URL}/api/vision/detect`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      logEl.innerHTML = `<span class="warn">YOLOv8 inference failed. Verify python vision_service.py is active.</span>`;
+      return;
+    }
+
+    const data = await res.json();
+    
+    // Set counts to adjust adaptive splits
+    lastYoloCount = data.total_vehicles;
+    
+    logEl.innerHTML = `<b>YOLOv8 DETECTION LOCKED</b><br>
+      Total Vehicles: <b>${data.total_vehicles}</b> (model: ${data.model})<br>
+      Cars: ${data.counts.car} · Motorbikes: ${data.counts.motorcycle} · Buses: ${data.counts.bus} · Trucks: ${data.counts.truck}<br>
+      <span class="info">Flow ratios injected into Webster Optimizer on Adaptive signals tab.</span>`;
+
+    // Render image with bounding box overlays
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      renderBboxesOnCCTV(e.target.result, data.image_size.width, data.image_size.height, data.detections);
+    };
+    reader.readAsDataURL(cctvFileObject);
+
+  } catch (err) {
+    logEl.innerHTML = `<span class="warn">⚠ Vision service unreachable at ${VISION_URL}. Start it with: <code>python vision_service.py</code> then try again.</span>`;
+  }
+});
+
+function renderBboxesOnCCTV(base64Image, origW, origH, detections) {
+  const container = document.getElementById('visionImageContainer');
+  container.innerHTML = '';
+  container.style.position = 'relative';
+  container.style.marginTop = '14px';
+
+  const img = document.createElement('img');
+  img.src = base64Image;
+  img.style.width = '100%';
+  img.style.height = 'auto';
+  img.style.borderRadius = '8px';
+  img.style.display = 'block';
+  container.appendChild(img);
+
+  const colors = {
+    car: '#3ddc84',
+    motorcycle: '#38bdf8',
+    bus: '#ff4757',
+    truck: '#ffb400',
+    bicycle: '#a855f7'
+  };
+
+  img.onload = () => {
+    const dispW = img.clientWidth;
+    const dispH = img.clientHeight;
+    
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    detections.forEach(d => {
+      const b = d.box;
+      const overlayBox = document.createElement('div');
+      overlayBox.style.position = 'absolute';
+      overlayBox.style.border = `2.5px solid ${colors[d.label] || '#fff'}`;
+      overlayBox.style.left = `${b.x1 * scaleX}px`;
+      overlayBox.style.top = `${b.y1 * scaleY}px`;
+      overlayBox.style.width = `${(b.x2 - b.x1) * scaleX}px`;
+      overlayBox.style.height = `${(b.y2 - b.y1) * scaleY}px`;
+      overlayBox.style.pointerEvents = 'none';
+
+      // Small tooltip
+      const tag = document.createElement('span');
+      tag.textContent = `${d.label} ${Math.round(d.confidence*100)}%`;
+      tag.style.position = 'absolute';
+      tag.style.top = '-16px';
+      tag.style.left = '-2.5px';
+      tag.style.background = colors[d.label] || '#fff';
+      tag.style.color = '#111';
+      tag.style.fontSize = '8px';
+      tag.style.fontWeight = 'bold';
+      tag.style.padding = '0px 3px';
+      tag.style.borderRadius = '2px 2px 0 0';
+      tag.style.whiteSpace = 'nowrap';
+
+      overlayBox.appendChild(tag);
+      container.appendChild(overlayBox);
+    });
+  };
+}
+
+/* ---------------- PANEL 6: FLOOD WATERLOGGING RISKS ---------------- */
+async function requestFloodRiskData() {
+  document.getElementById('floodMainTargetLabel').textContent = activePlaceName;
+  const gridEl = document.getElementById('floodRisksGrid');
+  gridEl.innerHTML = 'Simulating drainage index flows...';
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/flood/risk?lat=${activeCoords.lat}&lng=${activeCoords.lng}`);
+    const data = await res.json();
+
+    document.getElementById('floodElevationFooter').textContent = `Elevation: ${data.elevation_m}m | Distance to hazard drain: ${data.distance_to_zone_km}km`;
+
+    // Render table
+    gridEl.innerHTML = '';
+    
+    // Active focused location card
+    const targetItem = document.createElement('div');
+    targetItem.className = 'flood-item';
+    targetItem.style.borderColor = data.risk_level === 'High' ? 'var(--state-red)' : data.risk_level === 'Moderate' ? 'var(--state-amber)' : 'var(--border)';
+    targetItem.style.background = 'rgba(255,180,0,0.03)';
+    targetItem.innerHTML = `
+      <div>
+        <div class="fname">👉 Focused Location (${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)})</div>
+        <div class="fmeta">${data.recommendation} · Precipitation: ${data.precipitation_mm_hr} mm/hr</div>
+      </div>
+      <span class="chip ${data.risk_level === 'High' ? 'red' : data.risk_level === 'Moderate' ? 'amber' : 'green'}">${data.risk_level}</span>
+    `;
+    gridEl.appendChild(targetItem);
+
+    // Other known zones
+    const zones = ["Bellandur ORR Corridor", "Silk Board Junction", "K.R. Puram Underpass", "Tin Factory Area", "Koramangala 80ft Road"];
+    for (const z of zones) {
+      const jn = junctions.find(x => x.name.includes(z.split(" ")[0]));
+      const zoneLat = jn ? jn.lat : activeCoords.lat;
+      const zoneLng = jn ? jn.lng : activeCoords.lng;
+      
+      const zoneRes = await fetch(`${BACKEND_URL}/api/flood/risk?lat=${zoneLat}&lng=${zoneLng}`);
+      const zoneData = await zoneRes.json();
+
+      const item = document.createElement('div');
+      item.className = 'flood-item';
+      item.innerHTML = `
+        <div>
+          <div class="fname">${z}</div>
+          <div class="fmeta">Elevation: ${zoneData.elevation_m}m · Rain: ${zoneData.precipitation_mm_hr} mm/hr</div>
+        </div>
+        <span class="chip ${zoneData.risk_level === 'High' ? 'red' : zoneData.risk_level === 'Moderate' ? 'amber' : 'green'}">${zoneData.risk_level}</span>
+      `;
+      gridEl.appendChild(item);
+    }
+
+  } catch (err) {
+    gridEl.innerHTML = `<span style="color:var(--state-amber)">Flood vulnerability server offline. Check backend logs.</span>`;
+  }
+}
+
+async function requestModelMetrics() {
+  const logEl = document.getElementById('metricsLog');
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/model/metrics`);
+    const data = await res.json();
+
+    document.getElementById('metricsGatAccuracy').textContent = `${data.gat_lstm.accuracy}%`;
+    document.getElementById('metricsGatMae').textContent = `MAE: ${data.gat_lstm.mean_absolute_error}%`;
+    document.getElementById('metricsGatPrecision').textContent = `${data.gat_lstm.precision}%`;
+    document.getElementById('metricsGatRecall').textContent = `${data.gat_lstm.recall}%`;
+    
+    document.getElementById('metricsYoloMap').textContent = `${data.yolov8.map50}%`;
+    document.getElementById('metricsFloodF1').textContent = `${data.flood_classifier.recall}%`;
+
+    // Format feed table
+    let feedHtml = `<table style="width:100%; border-collapse:collapse; text-align:left;">
+      <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); font-size:9.5px; text-transform:uppercase;">
+        <th style="padding:4px 0;">Time</th>
+        <th>Location</th>
+        <th style="text-align:right;">Forecast</th>
+        <th style="text-align:right;">Actual</th>
+        <th style="text-align:right;">Err</th>
+      </tr>`;
+    
+    data.history_feed.forEach(h => {
+      const errColor = h.error > 8.0 ? 'var(--state-red)' : 'var(--state-green)';
+      feedHtml += `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+        <td style="padding:6px 0; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:9.5px;">${h.time}</td>
+        <td style="font-weight:500;">${h.location}</td>
+        <td style="text-align:right; font-family:'IBM Plex Mono';">${h.predicted}%</td>
+        <td style="text-align:right; font-family:'IBM Plex Mono';">${h.actual}%</td>
+        <td style="text-align:right; font-family:'IBM Plex Mono'; color:${errColor}; font-weight:600;">${h.error}%</td>
+      </tr>`;
+    });
+    feedHtml += `</table>`;
+    logEl.innerHTML = feedHtml;
+
+    // Draw loss curves
+    drawLossCurvesPlot(data.loss_curves);
+
+  } catch (err) {
+    logEl.innerHTML = `<span class="warn">Metrics service unreachable at ${BACKEND_URL}. Start python main.py then try again.</span>`;
+  }
+}
+
+function drawLossCurvesPlot(curves) {
+  if (lossChart) lossChart.destroy();
+  const ctx = document.getElementById('metricsLossChart').getContext('2d');
+  lossChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: curves.epochs,
+      datasets: [
+        {
+          label: 'GAT-LSTM Val Loss',
+          data: curves.lstm_val_loss,
+          borderColor: '#ffb400',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          pointRadius: 2,
+          tension: 0.15
+        },
+        {
+          label: 'YOLOv8 Val Loss',
+          data: curves.yolo_val_loss,
+          borderColor: '#3ddc84',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          pointRadius: 2,
+          tension: 0.15
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#8492a6', font: { family: 'IBM Plex Mono', size: 9.5 } } }
+      },
+      scales: {
+        x: { ticks: { color: '#8492a6', font: { family: 'IBM Plex Mono', size: 9 } }, grid: { color: 'rgba(43, 56, 78, 0.12)' } },
+        y: { ticks: { color: '#8492a6', font: { family: 'IBM Plex Mono', size: 9 } }, grid: { color: 'rgba(43, 56, 78, 0.12)' } }
+      }
+    }
+  });
+}
+
+// Kickstart system
+boot();
+</script>
+</body>
+</html>
